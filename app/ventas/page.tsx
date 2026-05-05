@@ -37,6 +37,10 @@ export default function SalesPage() {
   const [message, setMessage] = useState('')
   const [loading, setLoading] = useState(false)
 
+  const [productSearch, setProductSearch] = useState('')
+  const [searchResults, setSearchResults] = useState<Product[]>([])
+  const [searching, setSearching] = useState(false)
+
   const barcodeInputRef = useRef<HTMLInputElement | null>(null)
 
   const total = cart.reduce((sum, item) => {
@@ -92,6 +96,61 @@ export default function SalesPage() {
     setBarcode('')
     barcodeInputRef.current?.focus()
   }
+
+  async function searchProductsByName() {
+  const cleanSearch = productSearch.trim()
+
+  if (!cleanSearch) {
+    setMessage('Escribe el nombre del producto que quieres buscar.')
+    return
+  }
+
+  if (cleanSearch.length < 2) {
+    setMessage('Escribe al menos 2 letras para buscar.')
+    return
+  }
+
+  setSearching(true)
+  setMessage('')
+
+  const { data, error } = await supabase
+    .from('products')
+    .select('*')
+    .eq('is_active', true)
+    .ilike('name', `%${cleanSearch}%`)
+    .order('name', { ascending: true })
+    .limit(10)
+
+  setSearching(false)
+
+  if (error) {
+    setMessage(`Error al buscar productos: ${error.message}`)
+    return
+  }
+
+  setSearchResults((data as Product[]) ?? [])
+
+  if (!data || data.length === 0) {
+    setMessage('No se encontraron productos con ese nombre.')
+  }
+}
+
+function handleNameSearchSubmit(event: FormEvent<HTMLFormElement>) {
+  event.preventDefault()
+  searchProductsByName()
+}
+
+function addSearchResultToCart(product: Product) {
+  if (product.stock <= 0) {
+    setMessage('Producto agotado. No se puede vender.')
+    return
+  }
+
+  addToCart(product)
+  setProductSearch('')
+  setSearchResults([])
+  barcodeInputRef.current?.focus()
+}
 
   function addToCart(product: Product) {
     setCart((currentCart) => {
@@ -338,8 +397,48 @@ export default function SalesPage() {
           </form>
 
           <p style={helpTextStyle}>
-            Al escanear, escribe el código en este campo.
+            Escanea o escribe el código en este campo.
           </p>
+
+          <div style={searchBoxStyle}>
+            <h3 style={searchTitleStyle}>Buscar producto por nombre</h3>
+
+            <form onSubmit={handleNameSearchSubmit} style={nameSearchFormStyle}>
+              <input
+                style={inputStyle}
+                value={productSearch}
+                onChange={(event) => setProductSearch(event.target.value)}
+                placeholder="Ej. Coca-Cola, Sabritas, agua..."
+              />
+
+              <button type="submit" style={buttonStyle} disabled={searching}>
+                {searching ? 'Buscando...' : 'Buscar'}
+              </button>
+            </form>
+
+            {searchResults.length > 0 && (
+              <div style={resultsStyle}>
+                {searchResults.map((product) => (
+                  <div key={product.id} style={resultItemStyle}>
+                    <div>
+                      <strong>{product.name}</strong>
+                      <p style={resultTextStyle}>
+                        Código: {product.barcode ?? 'Sin código'} | Stock: {product.stock} | Precio: ${Number(product.sale_price).toFixed(2)}
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      style={smallButtonStyle}
+                      onClick={() => addSearchResultToCart(product)}
+                    >
+                      Agregar
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
           {message && <p style={messageStyle}>{message}</p>}
         </div>
@@ -821,4 +920,46 @@ const receiptThanksStyle: CSSProperties = {
   textAlign: 'center',
   marginTop: 18,
   fontWeight: 700,
+}
+
+const searchBoxStyle: CSSProperties = {
+  marginTop: 20,
+  paddingTop: 18,
+  borderTop: '1px solid #334155',
+}
+
+const searchTitleStyle: CSSProperties = {
+  fontSize: 16,
+  margin: '0 0 12px',
+}
+
+const nameSearchFormStyle: CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: '1fr auto',
+  gap: 12,
+  alignItems: 'center',
+}
+
+const resultsStyle: CSSProperties = {
+  marginTop: 14,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 10,
+}
+
+const resultItemStyle: CSSProperties = {
+  background: '#020617',
+  border: '1px solid #334155',
+  borderRadius: 10,
+  padding: 12,
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  gap: 12,
+}
+
+const resultTextStyle: CSSProperties = {
+  margin: '4px 0 0',
+  color: '#94a3b8',
+  fontSize: 13,
 }
